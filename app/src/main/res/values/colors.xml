@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+<!--    <color name="colorPrimary">#666200EE</color>-->
+    <color name="colorPrimary">#11000080</color>
+<!--    <color name="colorPrimaryDark">#663700B3</color>-->
+    <color name="colorPrimaryDark">#99000080</color>
+    <color name="colorAccent">#6603DAC5</color>
+    <color name="white">#66ffffff</color>
+    <color name="black">#66000000</color>
+    <color name="navy">#77000080</color>
+    <color name="bg_gradient_start">#660178b5</color>
+    <color name="bg_gradient_end">#66000080</color>
+<!--    <color name="bg_gradient_start">#6631244e</color>-->
+<!--    <color name="bg_gradient_start">#66ffffff</color>-->
+<!--    <color name="bg_gradient_end">#666b394c</color>-->
+<!--    <color name="bg_gradient_start">#3b5998</color>-->
+<!--    <color name="bg_gradient_end">#ffffff</color>-->
+<!--    <color name="bg_gradient_start">#66BBFFFF</color>-->
+<!--    <color name="bg_gradient_end">#99ffffff</color>-->
+</resources>
