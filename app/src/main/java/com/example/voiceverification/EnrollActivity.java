@@ -41,11 +41,15 @@ public class EnrollActivity extends AppCompatActivity {
     static MappedByteBuffer preprocessingModel;
     static MappedByteBuffer voiceVerificationModel;
     MappedByteBuffer vadModel;
+    MappedByteBuffer marblenetVadModel;
+    MappedByteBuffer preprocessingMfccModel;
     static MappedByteBuffer fullModel;
 
     private static Interpreter preprocessing = null;
     private static Interpreter voiceVerification = null;
     Interpreter vadIntepreter = null;
+    Interpreter marblenetVadIntepreter = null;
+    Interpreter preprocessingMfccIntepreter = null;
     private static Interpreter full = null;
 
     private static final int SAMPLE_RATE = 16000;
@@ -67,7 +71,7 @@ public class EnrollActivity extends AppCompatActivity {
     private TextView txtSpeech;
     private static int numAudio = 0;
 
-    public float[] convert3Dto1D(double[][][] arr3D){
+    public float[] convert3Dto1D(float[][][] arr3D){
         float[] arr1D = new float[arr3D.length * arr3D[0].length * arr3D[0][0].length];
         int index = 0;
         for (int i = 0; i < arr3D.length; i++)
@@ -79,41 +83,80 @@ public class EnrollActivity extends AppCompatActivity {
 
     ArrayList<double[]> dataList = new ArrayList<>();
 
+    float[] generateRandomArray(Integer n) {
+        float[] data = new float[n];
+        Random rd = new Random();
+        for (int i = 0; i < n; i++)
+            data[i] = rd.nextFloat();
+
+        return data;
+    }
+
+    public int getIndex(int i, int j) {
+        return i * 64 + j;
+    }
+
+    public float[][][] reshapeData(float[] rawData) {
+        float[][][] reshapeData = new float[201][64][32];
+        for (int windowIndex = 0; windowIndex < 201 - 32 + 1; windowIndex++) {
+            for (int mfccIndex = 0; mfccIndex < 64; mfccIndex++) {
+                for (int frameIndex = 0; frameIndex < 32; frameIndex++) {
+                    reshapeData[windowIndex][mfccIndex][frameIndex] =
+                            rawData[mfccIndex * 64 + windowIndex + frameIndex];
+                }
+            }
+        }
+
+        return reshapeData;
+    }
 
     public void onClickTestVad(View v) {
         try {
             int index = 0;
-            long s = 0;
-            double[][] data = null;
+            long timeMfcc = 0;
+            long timeVad = 0;
+            long timeReshape = 0;
+            float[] data = null;
             double[][] delta = null;
-            double[][][] input = null;
+            float[] input = null;
             double[] signal = null;
+            long maxDuration = Long.MIN_VALUE;
+            long minDuration = Long.MAX_VALUE;
+
 
             int i = 0;
-            while (i < dataList.size()) {
-                signal = dataList.get(i);
-                data = null;
-                delta = null;
-                input = null;
-                long startTime = System.currentTimeMillis();
-                data = MfccModel.executeMfcc(signal);
-                delta = MfccModel.executeDelta(data, 2);
-                input = InputVadGenerator.generate(data, delta);
-                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{2048, 2}, DataType.FLOAT32);
-                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{2048, 30, 24}, DataType.FLOAT32);
-                vadInputData.loadArray(this.convert3Dto1D(input));
-                this.vadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
-                long endTime = System.currentTimeMillis();
-                long duration = endTime - startTime;
-                Log.d("hao_performance", "each duration: " + duration);
+            while (i++ < 100) {
+                input = this.generateRandomArray(32000);
+                long startTimeMfcc = System.currentTimeMillis();
+                TensorBuffer mfccOutputData = TensorBuffer.createFixedSize(new int[]{1, 64, 201}, DataType.FLOAT32);
+                TensorBuffer mfccInputData = TensorBuffer.createFixedSize(new int[]{32000}, DataType.FLOAT32);
+                mfccInputData.loadArray(input);
+                this.preprocessingMfccIntepreter.run(mfccInputData.getBuffer(), mfccOutputData.getBuffer());
+                long endTimeMfcc = System.currentTimeMillis();
+                long durationMfcc = endTimeMfcc - startTimeMfcc;
+                timeMfcc += durationMfcc;
 
-                s += duration;
-                index++;
-                i++;
-                Thread.sleep(300);
+                long startTimeReshape = System.currentTimeMillis();
+                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{201, 2}, DataType.FLOAT32);
+                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{201, 64, 32}, DataType.FLOAT32);
+                vadInputData.loadArray(this.convert3Dto1D(this.reshapeData(mfccOutputData.getFloatArray())));
+                long endTimeReshape = System.currentTimeMillis();
+                long durationReshape = endTimeReshape - startTimeReshape;
+                timeReshape += durationReshape;
+
+                long startTimeVad = System.currentTimeMillis();
+                this.marblenetVadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
+                long endTimeVad = System.currentTimeMillis();
+                long durationVad = endTimeVad - startTimeVad;
+                timeVad += durationVad;
+
+                if (durationMfcc > maxDuration) maxDuration = durationMfcc;
+                if (durationMfcc < minDuration) minDuration = durationMfcc;
             }
-            Log.d("hao_performance", "s: " + s);
-            Log.d("hao_performance", "index: " + index);
+
+            Log.d("hao_performance", "timeMfcc = " + timeMfcc);
+            Log.d("hao_performance", "timeReshape = " + timeReshape);
+            Log.d("hao_performance", "timeVad = " + timeVad);
 
 
         } catch (Exception e) {
@@ -121,49 +164,6 @@ public class EnrollActivity extends AppCompatActivity {
             Log.d("hao_performance", "index: " + e.getMessage());
 
         }
-//        try {
-//            int index = 0;
-//            long s = 0;
-//            double[][] data = null;
-//            double[][] delta = null;
-//            double[][][] input = null;
-//            double[] signal = null;
-//
-//            int i = 0;
-//            while (i < 100) {
-//                data = null;
-//                delta = null;
-//                input = null;
-//                Random random = new Random(123);
-//
-//                float[] randomData = new float[64 * 64]; // Total number of elements in the shape [1, 64, 64] is 64 * 64
-//                for (int indexRandom = 0; indexRandom < randomData.length; indexRandom++) {
-//                    randomData[indexRandom] = random.nextFloat(); // Generates a random float value between 0.0 and 1.0
-//                }
-//
-//                long startTime = System.currentTimeMillis();
-//                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{1, 2}, DataType.FLOAT32);
-//                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{1, 64, 64}, DataType.FLOAT32);
-//                vadInputData.loadArray(randomData);
-//                this.vadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
-//                long endTime = System.currentTimeMillis();
-//                long duration = endTime - startTime;
-//                Log.d("hao_performance", "each duration: " + duration);
-//
-//                s += duration;
-//                index++;
-//                i++;
-//                Thread.sleep(300);
-//            }
-//            Log.d("hao_performance", "s: " + s);
-//            Log.d("hao_performance", "index: " + index);
-//
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            Log.d("hao_performance", "index: " + e.getMessage());
-//
-//        }
     }
 
     @Override
@@ -186,16 +186,19 @@ public class EnrollActivity extends AppCompatActivity {
 
 
         try{
-//            preprocessingModel = FileUtil.loadMappedFile(this, "preprocessing.tflite");
-//            preprocessing = new Interpreter(preprocessingModel, options);
-//
-//            voiceVerificationModel = FileUtil.loadMappedFile(this, "model.tflite");
-//            voiceVerification = new Interpreter(voiceVerificationModel, options);
             fullModel = FileUtil.loadMappedFile(this, "v2-512.tflite");
             full = new Interpreter(fullModel, options);
 
             vadModel = FileUtil.loadMappedFile(this, "model.tflite");
             vadIntepreter = new Interpreter(vadModel, options);
+
+            marblenetVadModel = FileUtil.loadMappedFile(this, "vad_marblenet_201.tflite");
+            marblenetVadIntepreter = new Interpreter(marblenetVadModel, options);
+
+            preprocessingMfccModel = FileUtil.loadMappedFile(this, "preprocessing_mfcc_32000.tflite");
+            preprocessingMfccIntepreter = new Interpreter(preprocessingMfccModel, options);
+
+
         } catch (IOException e){
             Log.e("tfliteSupport", "Error reading model", e);
         }
@@ -219,42 +222,6 @@ public class EnrollActivity extends AppCompatActivity {
         mp = MediaPlayer.create(this, R.raw.alert);
         mp_complete = MediaPlayer.create(this, R.raw.ting);
         vibe = (Vibrator) this.getSystemService(Context.VIBRATOR_SERVICE);
-
-        BufferedReader reader = null;
-        InputStreamReader isFramesFile = null;
-        try {
-            int epoch = 0;
-            isFramesFile = new InputStreamReader(getAssets()
-                    .open("input_frame.txt"));
-            reader = new BufferedReader(isFramesFile);
-            String[] parts = null;
-            String line = null;
-            StringBuilder sb = new StringBuilder();
-            double[] signal = null;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line);
-                // Split the line into an array of strings
-                parts = sb.toString().split(" ");
-                // Convert the strings to integers and print them
-                signal = new double[parts.length];
-                for (int i = 0; i < parts.length; i++) {
-                    signal[i] = Double.parseDouble(parts[i]);
-                }
-                sb.setLength(0);
-                dataList.add(signal);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            Log.d("hao_performance", "index: " + e.getMessage());
-
-        } finally {
-            try {
-                isFramesFile.close();
-                reader.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
     }
 
     @Override
