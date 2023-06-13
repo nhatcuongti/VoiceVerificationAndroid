@@ -126,24 +126,34 @@ public class EnrollActivity extends AppCompatActivity {
 
             int i = 0;
             while (i++ < 100) {
-                input = this.generateRandomArray(32000);
+                input = this.generateRandomArray(4960);
+
+                /**
+                 * Start time MFCC
+                 */
                 long startTimeMfcc = System.currentTimeMillis();
-                TensorBuffer mfccOutputData = TensorBuffer.createFixedSize(new int[]{1, 64, 201}, DataType.FLOAT32);
-                TensorBuffer mfccInputData = TensorBuffer.createFixedSize(new int[]{32000}, DataType.FLOAT32);
+                TensorBuffer mfccOutputData = TensorBuffer.createFixedSize(new int[]{1, 64, 32}, DataType.FLOAT32);
+                TensorBuffer mfccInputData = TensorBuffer.createFixedSize(new int[]{4960}, DataType.FLOAT32);
                 mfccInputData.loadArray(input);
                 this.preprocessingMfccIntepreter.run(mfccInputData.getBuffer(), mfccOutputData.getBuffer());
                 long endTimeMfcc = System.currentTimeMillis();
                 long durationMfcc = endTimeMfcc - startTimeMfcc;
                 timeMfcc += durationMfcc;
 
+                /**
+                 * Start Time Reshape
+                 */
                 long startTimeReshape = System.currentTimeMillis();
-                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{201, 2}, DataType.FLOAT32);
-                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{201, 64, 32}, DataType.FLOAT32);
-                vadInputData.loadArray(this.convert3Dto1D(this.reshapeData(mfccOutputData.getFloatArray())));
+                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{1, 2}, DataType.FLOAT32);
+                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{1, 64, 32}, DataType.FLOAT32);
+                vadInputData.loadArray(mfccOutputData.getFloatArray());
                 long endTimeReshape = System.currentTimeMillis();
                 long durationReshape = endTimeReshape - startTimeReshape;
                 timeReshape += durationReshape;
 
+                /**
+                 * Start Time VAD
+                 */
                 long startTimeVad = System.currentTimeMillis();
                 this.marblenetVadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
                 long endTimeVad = System.currentTimeMillis();
@@ -192,10 +202,10 @@ public class EnrollActivity extends AppCompatActivity {
             vadModel = FileUtil.loadMappedFile(this, "model.tflite");
             vadIntepreter = new Interpreter(vadModel, options);
 
-            marblenetVadModel = FileUtil.loadMappedFile(this, "vad_marblenet_201.tflite");
+            marblenetVadModel = FileUtil.loadMappedFile(this, "vad_marblenet.tflite");
             marblenetVadIntepreter = new Interpreter(marblenetVadModel, options);
 
-            preprocessingMfccModel = FileUtil.loadMappedFile(this, "preprocessing_mfcc_32000.tflite");
+            preprocessingMfccModel = FileUtil.loadMappedFile(this, "preprocessing_mfcc.tflite");
             preprocessingMfccIntepreter = new Interpreter(preprocessingMfccModel, options);
 
 
