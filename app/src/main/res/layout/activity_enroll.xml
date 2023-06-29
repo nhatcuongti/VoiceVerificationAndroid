@@ -18,14 +18,6 @@
         android:textStyle="normal"
         android:text="Let's say 3 more time(s)"/>
 
-    <Button
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:onClick="onClickTestVad"
-        android:text="Test VAD"
-        android:textSize="26dp" />
-
 
     <LinearLayout
         android:layout_width="wrap_content"

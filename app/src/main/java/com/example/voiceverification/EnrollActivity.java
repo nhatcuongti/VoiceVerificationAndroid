@@ -36,6 +36,8 @@ import java.nio.MappedByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class EnrollActivity extends AppCompatActivity {
     static MappedByteBuffer preprocessingModel;
@@ -59,7 +61,7 @@ public class EnrollActivity extends AppCompatActivity {
     AudioRecord record = null;
 
     // Working variables.
-    short[] recordingBuffer = new short[RECORDING_LENGTH];
+    short[] recordingBuffer = new short[BUFFER_SIZE];
 
     // UI elements.
     private static final int REQUEST_RECORD_AUDIO = 13;
@@ -71,110 +73,7 @@ public class EnrollActivity extends AppCompatActivity {
     private TextView txtSpeech;
     private static int numAudio = 0;
 
-    public float[] convert3Dto1D(float[][][] arr3D){
-        float[] arr1D = new float[arr3D.length * arr3D[0].length * arr3D[0][0].length];
-        int index = 0;
-        for (int i = 0; i < arr3D.length; i++)
-            for (int j = 0; j < arr3D[0].length; j++)
-                for (int k = 0; k < arr3D[0][0].length; k++)
-                    arr1D[index++] = (float) arr3D[i][j][k];
-        return arr1D;
-    }
-
-    ArrayList<double[]> dataList = new ArrayList<>();
-
-    float[] generateRandomArray(Integer n) {
-        float[] data = new float[n];
-        Random rd = new Random();
-        for (int i = 0; i < n; i++)
-            data[i] = rd.nextFloat();
-
-        return data;
-    }
-
-    public int getIndex(int i, int j) {
-        return i * 64 + j;
-    }
-
-    public float[][][] reshapeData(float[] rawData) {
-        float[][][] reshapeData = new float[201][64][32];
-        for (int windowIndex = 0; windowIndex < 201 - 32 + 1; windowIndex++) {
-            for (int mfccIndex = 0; mfccIndex < 64; mfccIndex++) {
-                for (int frameIndex = 0; frameIndex < 32; frameIndex++) {
-                    reshapeData[windowIndex][mfccIndex][frameIndex] =
-                            rawData[mfccIndex * 64 + windowIndex + frameIndex];
-                }
-            }
-        }
-
-        return reshapeData;
-    }
-
-    public void onClickTestVad(View v) {
-        try {
-            int index = 0;
-            long timeMfcc = 0;
-            long timeVad = 0;
-            long timeReshape = 0;
-            float[] data = null;
-            double[][] delta = null;
-            float[] input = null;
-            double[] signal = null;
-            long maxDuration = Long.MIN_VALUE;
-            long minDuration = Long.MAX_VALUE;
-
-
-            int i = 0;
-            while (i++ < 100) {
-                input = this.generateRandomArray(4960);
-
-                /**
-                 * Start time MFCC
-                 */
-                long startTimeMfcc = System.currentTimeMillis();
-                TensorBuffer mfccOutputData = TensorBuffer.createFixedSize(new int[]{1, 64, 32}, DataType.FLOAT32);
-                TensorBuffer mfccInputData = TensorBuffer.createFixedSize(new int[]{4960}, DataType.FLOAT32);
-                mfccInputData.loadArray(input);
-                this.preprocessingMfccIntepreter.run(mfccInputData.getBuffer(), mfccOutputData.getBuffer());
-                long endTimeMfcc = System.currentTimeMillis();
-                long durationMfcc = endTimeMfcc - startTimeMfcc;
-                timeMfcc += durationMfcc;
-
-                /**
-                 * Start Time Reshape
-                 */
-                long startTimeReshape = System.currentTimeMillis();
-                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{1, 2}, DataType.FLOAT32);
-                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{1, 64, 32}, DataType.FLOAT32);
-                vadInputData.loadArray(mfccOutputData.getFloatArray());
-                long endTimeReshape = System.currentTimeMillis();
-                long durationReshape = endTimeReshape - startTimeReshape;
-                timeReshape += durationReshape;
-
-                /**
-                 * Start Time VAD
-                 */
-                long startTimeVad = System.currentTimeMillis();
-                this.marblenetVadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
-                long endTimeVad = System.currentTimeMillis();
-                long durationVad = endTimeVad - startTimeVad;
-                timeVad += durationVad;
-
-                if (durationMfcc > maxDuration) maxDuration = durationMfcc;
-                if (durationMfcc < minDuration) minDuration = durationMfcc;
-            }
-
-            Log.d("hao_performance", "timeMfcc = " + timeMfcc);
-            Log.d("hao_performance", "timeReshape = " + timeReshape);
-            Log.d("hao_performance", "timeVad = " + timeVad);
-
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            Log.d("hao_performance", "index: " + e.getMessage());
-
-        }
-    }
+    private Timer captureTimer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -202,10 +101,10 @@ public class EnrollActivity extends AppCompatActivity {
             vadModel = FileUtil.loadMappedFile(this, "model.tflite");
             vadIntepreter = new Interpreter(vadModel, options);
 
-            marblenetVadModel = FileUtil.loadMappedFile(this, "vad_marblenet.tflite");
+            marblenetVadModel = FileUtil.loadMappedFile(this, "vad_marblenet_primary.tflite");
             marblenetVadIntepreter = new Interpreter(marblenetVadModel, options);
 
-            preprocessingMfccModel = FileUtil.loadMappedFile(this, "preprocessing_mfcc.tflite");
+            preprocessingMfccModel = FileUtil.loadMappedFile(this, "preprocessing_mfcc_primary.tflite");
             preprocessingMfccIntepreter = new Interpreter(preprocessingMfccModel, options);
 
 
@@ -219,7 +118,8 @@ public class EnrollActivity extends AppCompatActivity {
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
-                32000*2);
+                BUFFER_SIZE * 2);
+        captureTimer = new Timer();
 
         if (record.getState() != AudioRecord.STATE_INITIALIZED) {
             Log.e("tfliteSupport", "Audio Record can't initialize!");
@@ -257,28 +157,83 @@ public class EnrollActivity extends AppCompatActivity {
         }
     }
 
+    // Constants
+    private static final int BUFFER_DURATION_MS = 150;
+    private static final int TARGET_DURATION_MS = 150;
+    private static final int BUFFER_SIZE = SAMPLE_RATE * BUFFER_DURATION_MS / 1000;
+    private static final int TARGET_SIZE = SAMPLE_RATE * TARGET_DURATION_MS / 1000;
+
+    public void startCapture() {
+        record.startRecording();
+        startCaptureTimer();
+    }
+
+    private Integer speechDataIndex = 0;
+    private short[] speechData;
+
+    private boolean applyVAD() {
+        /**
+         * Start time MFCC
+         */
+        TensorBuffer mfccOutputData = TensorBuffer.createFixedSize(new int[]{1, 64, 16}, DataType.FLOAT32);
+        TensorBuffer mfccInputData = TensorBuffer.createFixedSize(new int[]{2400}, DataType.FLOAT32);
+        float[] recordingBufferFloat = new float[2400];
+        for (int i = 0; i < this.recordingBuffer.length; i++)
+            recordingBufferFloat[i] = (float) this.recordingBuffer[i];
+        mfccInputData.loadArray(recordingBufferFloat);
+        this.preprocessingMfccIntepreter.run(mfccInputData.getBuffer(), mfccOutputData.getBuffer());
+
+
+        TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{1, 2}, DataType.FLOAT32);
+        TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{1, 64, 16}, DataType.FLOAT32);
+        vadInputData.loadArray(mfccOutputData.getFloatArray());
+
+        this.marblenetVadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
+        return vadOutputData.getFloatArray()[0] > vadOutputData.getFloatArray()[1];
+    }
+
+    private void startCaptureTimer() {
+        TimerTask captureTask = new TimerTask() {
+            @Override
+            public void run() {
+                int bytesRead = record.read(recordingBuffer, 0, BUFFER_SIZE);
+                boolean isSpeech = applyVAD();
+
+                if (isSpeech) {
+                    int bytesToCopy = Math.min(bytesRead, RECORDING_LENGTH - speechDataIndex);
+                    System.arraycopy(recordingBuffer, 0, speechData, speechDataIndex, bytesToCopy);
+                    speechDataIndex += bytesToCopy;
+                    if (speechDataIndex >= RECORDING_LENGTH) {
+                        stopCapture();
+                    }
+                }
+            }
+        };
+        captureTimer.scheduleAtFixedRate(captureTask, 0, 250);
+    }
+
+    public void stopCapture() {
+        record.stop();
+        stopCaptureTimer();
+    }
+
+    private void stopCaptureTimer() {
+        captureTimer.cancel();
+        captureTimer.purge();
+    }
+
+
     private float[] voiceToVec() {
         float[] inputBuffer = new float[RECORDING_LENGTH];
+        short[] recordingBuffer = new short[BUFFER_SIZE];
         record.startRecording();
         Log.e("tfliteSupport", "Start recording");
-        record.read(new short[3840], 0, 3840);
-        record.read(recordingBuffer, 0, recordingBuffer.length);
-        for (int i = 0; i < RECORDING_LENGTH; ++i) {
-            inputBuffer[i] = recordingBuffer[i] / 32767.0f;
-        }
-        record.stop();
+        this.startCapture();
 
         long startTime = System.nanoTime();
-//        TensorBuffer outputBuffer1 =
-//                TensorBuffer.createFixedSize(new int[]{10, 64, 402, 1}, DataType.FLOAT32);
 
         TensorBuffer outputBuffer2 =
                 TensorBuffer.createFixedSize(new int[]{10, 512}, DataType.FLOAT32);
-
-//        if ((null != preprocessing) && (null != voiceVerification)){
-//            preprocessing.run(inputBuffer, outputBuffer1.getBuffer());
-//            voiceVerification.run(outputBuffer1.getBuffer(), outputBuffer2.getBuffer());
-//        }
         if (null != full){
             full.run(inputBuffer, outputBuffer2.getBuffer());
         }

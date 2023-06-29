@@ -118,46 +118,48 @@ public class MainActivity extends Activity implements LockscreenUtils.OnLockStat
 
 
     public void onClickTestVad(View v) {
-        try {
-            int index = 0;
-            long s = 0;
-            double[][] data = null;
-            double[][] delta = null;
-            double[][][] input = null;
-            double[] signal = null;
-
-            int i = 0;
-            while (i < dataList.size()) {
-                signal = dataList.get(i);
-                data = null;
-                delta = null;
-                input = null;
-                long startTime = System.currentTimeMillis();
-                data = MfccModel.executeMfcc(signal);
-                delta = MfccModel.executeDelta(data, 2);
-                input = InputVadGenerator.generate(data, delta);
-                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{2048, 2}, DataType.FLOAT32);
-                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{2048, 30, 24}, DataType.FLOAT32);
-                vadInputData.loadArray(this.convert3Dto1D(input));
-                this.vadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
-                long endTime = System.currentTimeMillis();
-                long duration = endTime - startTime;
-                Log.d("hao_performance", "each duration: " + duration);
-
-                s += duration;
-                index++;
-                i++;
-                Thread.sleep(300);
-            }
-            Log.d("hao_performance", "s: " + s);
-            Log.d("hao_performance", "index: " + index);
-
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            Log.d("hao_performance", "index: " + e.getMessage());
-
-        }
+        Intent intent = new Intent(MainActivity.this, EnrollActivity.class);
+        startActivity(intent);
+//        try {
+//            int index = 0;
+//            long s = 0;
+//            double[][] data = null;
+//            double[][] delta = null;
+//            double[][][] input = null;
+//            double[] signal = null;
+//
+//            int i = 0;
+//            while (i < dataList.size()) {
+//                signal = dataList.get(i);
+//                data = null;
+//                delta = null;
+//                input = null;
+//                long startTime = System.currentTimeMillis();
+//                data = MfccModel.executeMfcc(signal);
+//                delta = MfccModel.executeDelta(data, 2);
+//                input = InputVadGenerator.generate(data, delta);
+//                TensorBuffer vadOutputData = TensorBuffer.createFixedSize(new int[]{2048, 2}, DataType.FLOAT32);
+//                TensorBuffer vadInputData = TensorBuffer.createFixedSize(new int[]{2048, 30, 24}, DataType.FLOAT32);
+//                vadInputData.loadArray(this.convert3Dto1D(input));
+//                this.vadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
+//                long endTime = System.currentTimeMillis();
+//                long duration = endTime - startTime;
+//                Log.d("hao_performance", "each duration: " + duration);
+//
+//                s += duration;
+//                index++;
+//                i++;
+//                Thread.sleep(300);
+//            }
+//            Log.d("hao_performance", "s: " + s);
+//            Log.d("hao_performance", "index: " + index);
+//
+//
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            Log.d("hao_performance", "index: " + e.getMessage());
+//
+//        }
 //        try {
 //            int index = 0;
 //            long s = 0;
