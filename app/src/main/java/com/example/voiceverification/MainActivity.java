@@ -277,7 +277,6 @@ public class MainActivity extends Activity implements LockscreenUtils.OnLockStat
 
 //        prefs = PreferenceManager.getDefaultSharedPreferences(this);
         boolean isEnroll = prefs.getBoolean("isEnroll", false);
-
         if (!isEnroll){
             int LAUNCH_ENROLL_ACTIVITY = 1;
             Intent i = new Intent(this, EnrollActivity.class);
@@ -410,24 +409,11 @@ public class MainActivity extends Activity implements LockscreenUtils.OnLockStat
         }
         record.stop();
         Log.d("tfliteSupport", Arrays.toString(inputBuffer));
-
-//        long startTime = System.nanoTime();
-//        TensorBuffer outputBuffer1 =
-//                TensorBuffer.createFixedSize(new int[]{10, 64, 402, 1}, DataType.FLOAT32);
-
         TensorBuffer outputBuffer2 =
                 TensorBuffer.createFixedSize(new int[]{10, 512}, DataType.FLOAT32);
-
-//        if ((null != preprocessing) && (null != voiceVerification)){
-//            preprocessing.run(inputBuffer, outputBuffer1.getBuffer());
-//            voiceVerification.run(outputBuffer1.getBuffer(), outputBuffer2.getBuffer());
-//        }
-//        long estimatedTime = System.nanoTime() - startTime;
-//        Log.d("tfliteSupport", ""+estimatedTime);
         if (null != full){
             full.run(inputBuffer, outputBuffer2.getBuffer());
         }
-//        Log.d("tfliteSupport", Arrays.toString(outputBuffer2.getFloatArray()));
         return outputBuffer2.getFloatArray();
     }
 

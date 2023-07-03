@@ -19,6 +19,7 @@ import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.voiceverification.utils.FrameVad;
 import com.example.voiceverification.utils.InputVadGenerator;
 import com.example.voiceverification.utils.MfccModel;
 
@@ -72,6 +73,7 @@ public class EnrollActivity extends AppCompatActivity {
     private static MediaPlayer mp_complete;
     private TextView txtSpeech;
     private static int numAudio = 0;
+    private FrameVad frameVad = null;
 
     private Timer captureTimer;
 
@@ -93,7 +95,6 @@ public class EnrollActivity extends AppCompatActivity {
         GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
         optionsGPU.addDelegate(gpuDelegate);
 
-
         try{
             fullModel = FileUtil.loadMappedFile(this, "v2-512.tflite");
             full = new Interpreter(fullModel, options);
@@ -106,6 +107,8 @@ public class EnrollActivity extends AppCompatActivity {
 
             preprocessingMfccModel = FileUtil.loadMappedFile(this, "preprocessing_mfcc_primary.tflite");
             preprocessingMfccIntepreter = new Interpreter(preprocessingMfccModel, options);
+
+            this.frameVad = new FrameVad(preprocessingMfccIntepreter, marblenetVadIntepreter, (float) 0.5, (float) 0.01 , (float) (0.15 - 0.01) / 2, 0);
 
 
         } catch (IOException e){
@@ -158,7 +161,7 @@ public class EnrollActivity extends AppCompatActivity {
     }
 
     // Constants
-    private static final int BUFFER_DURATION_MS = 150;
+    private static final int BUFFER_DURATION_MS = 10;
     private static final int TARGET_DURATION_MS = 150;
     private static final int BUFFER_SIZE = SAMPLE_RATE * BUFFER_DURATION_MS / 1000;
     private static final int TARGET_SIZE = SAMPLE_RATE * TARGET_DURATION_MS / 1000;
@@ -169,7 +172,27 @@ public class EnrollActivity extends AppCompatActivity {
     }
 
     private Integer speechDataIndex = 0;
-    private short[] speechData;
+    private short[] speechData = new short[32000];
+
+    private static float[] softmax(float[] logits) {
+        float max = Float.NEGATIVE_INFINITY;
+        for (float value : logits) {
+            max = Math.max(max, value);
+        }
+
+        float sum = 0.0f;
+        float[] probabilities = new float[logits.length];
+        for (int i = 0; i < logits.length; i++) {
+            probabilities[i] = (float) Math.exp(logits[i] - max);
+            sum += probabilities[i];
+        }
+
+        for (int i = 0; i < probabilities.length; i++) {
+            probabilities[i] /= sum;
+        }
+
+        return probabilities;
+    }
 
     private boolean applyVAD() {
         /**
@@ -189,7 +212,8 @@ public class EnrollActivity extends AppCompatActivity {
         vadInputData.loadArray(mfccOutputData.getFloatArray());
 
         this.marblenetVadIntepreter.run(vadInputData.getBuffer(), vadOutputData.getBuffer());
-        return vadOutputData.getFloatArray()[0] > vadOutputData.getFloatArray()[1];
+        float[] probabilitySpeech = this.softmax(vadOutputData.getFloatArray());
+        return probabilitySpeech[0] > probabilitySpeech[1];
     }
 
     private void startCaptureTimer() {
@@ -222,15 +246,38 @@ public class EnrollActivity extends AppCompatActivity {
         captureTimer.purge();
     }
 
+    private void processAudioDataWithVad() {
+        speechDataIndex = 0;
+        speechData = new short[speechData.length];
+        while (true) {
+            int bytesRead = record.read(recordingBuffer, 0, BUFFER_SIZE);
+            float[] recordingBufferWithFloat = new float[recordingBuffer.length];
+            for (int i = 0; i < recordingBuffer.length; i++)
+                recordingBufferWithFloat[i] = (float) recordingBuffer[i];
+            boolean isSpeech = frameVad.transcribe(recordingBufferWithFloat);
+
+            if (isSpeech) {
+                int bytesToCopy = Math.min(bytesRead, RECORDING_LENGTH - speechDataIndex);
+                System.arraycopy(recordingBuffer, 0, speechData, speechDataIndex, bytesToCopy);
+                speechDataIndex += bytesToCopy;
+                if (speechDataIndex >= RECORDING_LENGTH) {
+                    break;
+                }
+            }
+        }
+
+    }
 
     private float[] voiceToVec() {
         float[] inputBuffer = new float[RECORDING_LENGTH];
-        short[] recordingBuffer = new short[BUFFER_SIZE];
         record.startRecording();
         Log.e("tfliteSupport", "Start recording");
-        this.startCapture();
+//        this.startCapture();
 
         long startTime = System.nanoTime();
+        this.processAudioDataWithVad();
+        for (int i = 0; i < speechData.length; i++)
+            inputBuffer[i] = (float) speechData[i];
 
         TensorBuffer outputBuffer2 =
                 TensorBuffer.createFixedSize(new int[]{10, 512}, DataType.FLOAT32);

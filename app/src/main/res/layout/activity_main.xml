@@ -32,14 +32,6 @@
         android:textSize="26dp"
         android:textStyle="normal" />
 
-    <Button
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:onClick="onClickTestVad"
-        android:text="Test VAD"
-        android:textSize="26dp" />
-
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

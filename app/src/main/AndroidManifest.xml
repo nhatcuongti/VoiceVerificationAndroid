@@ -11,7 +11,7 @@
         android:theme="@style/AppTheme">
         <activity android:name=".VerifyActivity"></activity>
         <!-- android:theme="@style/Theme.VoiceVerification" > -->
-        <activity android:name=".EnrollActivity" />
+        <activity android:name=".EnrollActivity"></activity>
         <activity
             android:name=".MainActivity"
             android:excludeFromRecents="true"
